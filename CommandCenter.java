@@ -379,11 +379,12 @@ public class CommandCenter extends JFrame {
         private int fontSize = 14;
         
         private static final String PROMPT_TOKEN = "~CMD_WRAPPER_PROMPT_9F8X~";
+        private final String FONT_NAME = "Cascadia Mono"; 
 
         public CmdPanel() {
             setLayout(new BorderLayout());
             console.setEditable(false);
-            console.setFont(new Font("Consolas", Font.PLAIN, fontSize));
+            console.setFont(new Font(FONT_NAME, Font.PLAIN, fontSize));
             console.setMargin(new Insets(10, 10, 10, 10));
             
             JScrollPane scroll = new JScrollPane(console);
@@ -392,8 +393,8 @@ public class CommandCenter extends JFrame {
             
             JPanel inputPanel = new JPanel(new BorderLayout());
             inputPanel.setBorder(new EmptyBorder(5, 5, 5, 5));
-            promptLabel.setFont(new Font("Consolas", Font.BOLD, fontSize));
-            input.setFont(new Font("Consolas", Font.PLAIN, fontSize));
+            promptLabel.setFont(new Font(FONT_NAME, Font.BOLD, fontSize));
+            input.setFont(new Font(FONT_NAME, Font.PLAIN, fontSize));
             input.setBorder(BorderFactory.createEmptyBorder(5, 5, 5, 5));
             
             inputPanel.add(promptLabel, BorderLayout.WEST);
@@ -451,9 +452,9 @@ public class CommandCenter extends JFrame {
         }
         
         private void updateFontSize() {
-            console.setFont(new Font("Consolas", Font.PLAIN, fontSize));
-            input.setFont(new Font("Consolas", Font.PLAIN, fontSize));
-            promptLabel.setFont(new Font("Consolas", Font.BOLD, fontSize));
+            console.setFont(new Font(FONT_NAME, Font.PLAIN, fontSize));
+            input.setFont(new Font(FONT_NAME, Font.PLAIN, fontSize));
+            promptLabel.setFont(new Font(FONT_NAME, Font.BOLD, fontSize));
         }
         
         public String getConsoleText() {
@@ -486,6 +487,8 @@ public class CommandCenter extends JFrame {
                 
                 SwingUtilities.invokeLater(() -> {
                     try {
+                        // Force UTF-8 so tree symbols display correctly
+                        shellWriter.write("chcp 65001>nul\r\n");
                         shellWriter.write("prompt " + PROMPT_TOKEN + "\r\n");
                         shellWriter.write("cd /d " + currentPath + "\r\n");
                         shellWriter.write("cls\r\n");
@@ -995,7 +998,9 @@ public class CommandCenter extends JFrame {
             addAdvancedButton(panel, "curl -I -s https://networkchuck.com", "curl -I -s <INPUT>", "TEXT:https://networkchuck.com", "curl -I -s https://networkchuck.com");
             addAdvancedButton(panel, "curl checkip.amazonaws.com", "curl <INPUT>", "TEXT:checkip.amazonaws.com", "curl checkip.amazonaws.com");
             addAdvancedButton(panel, "curl qrcode.show/https://networkchuck.com", "curl qrcode.show/<INPUT>", "TEXT:https://networkchuck.com", "curl qrcode.show/https://networkchuck.com");
-            addAdvancedButton(panel, "curl -s \"https://www.youtube.com/feeds/videos.xml?channel_id=...\"", "curl -s \"https://www.youtube.com/feeds/videos.xml?channel_id=<INPUT>\"", "TEXT:UC2eYFnH61tmytImy1mTYvhA", "curl -s \"https://www.youtube.com/feeds/videos.xml?channel_id=UC2eYFnH61tmytImy1mTYvhA\"");
+            
+            // Updated Channel ID input type
+            addAdvancedButton(panel, "curl -s \"https://www.youtube.com/feeds/videos.xml?channel_id=...\"", "curl -s \"https://www.youtube.com/feeds/videos.xml?channel_id=<INPUT>\"", "CHANNEL_ID:UC2eYFnH61tmytImy1mTYvhA", "curl -s \"https://www.youtube.com/feeds/videos.xml?channel_id=UC2eYFnH61tmytImy1mTYvhA\"");
 
             addAdvancedButton(panel, "start https://networkchuck.com", "start <INPUT>", "TEXT:https://networkchuck.com", "start https://github.com");
             addAdvancedButton(panel, "doskey /history", null, null, "doskey /history");
@@ -1004,7 +1009,6 @@ public class CommandCenter extends JFrame {
         }
         
         private void addBasicButton(JPanel parent, String fullCmd, String leftCmd, String inputType) {
-            // Removed aggressive .replace(" ", "<br>") to let text flow naturally
             JButton btn = new JButton("<html><center>" + fullCmd.replace("|", "|<br>") + "</center></html>");
             btn.setFocusPainted(false);
             btn.setMargin(new Insets(5, 5, 5, 5));
@@ -1022,7 +1026,6 @@ public class CommandCenter extends JFrame {
         }
 
         private void addAdvancedButton(JPanel parent, String label, String leftCmd, String leftType, String rightCmd) {
-            // Removed aggressive .replace(" ", "<br>") to let text flow naturally
             JButton btn = new JButton("<html><center>" + label.replace("|", "|<br>") + "</center></html>");
             btn.setFocusPainted(false);
             btn.setMargin(new Insets(5, 5, 5, 5));
@@ -1048,9 +1051,18 @@ public class CommandCenter extends JFrame {
             }
 
             String defaultValue = "";
-            if (inputType != null && inputType.startsWith("TEXT:")) {
-                defaultValue = inputType.substring(5);
-                inputType = "TEXT";
+            boolean showUrlButtons = false;
+            
+            if (inputType != null) {
+                if (inputType.startsWith("TEXT:")) {
+                    defaultValue = inputType.substring(5);
+                    inputType = "TEXT";
+                    showUrlButtons = true;
+                } else if (inputType.startsWith("CHANNEL_ID:")) {
+                    defaultValue = inputType.substring(11);
+                    inputType = "TEXT";
+                    showUrlButtons = false; // Don't show URL buttons for Channel IDs
+                }
             }
 
             if ("FILE".equals(inputType) || "FOLDER".equals(inputType)) {
@@ -1074,15 +1086,17 @@ public class CommandCenter extends JFrame {
                 field.setFont(new Font("Segoe UI", Font.PLAIN, 14));
 
                 JPanel iconPanel = new JPanel(new FlowLayout(FlowLayout.CENTER, 10, 10));
-                JButton ghBtn = new JButton("GitHub");
-                JButton dsBtn = new JButton("DeepSeek");
-                JButton ytBtn = new JButton("YouTube");
+                if (showUrlButtons) {
+                    JButton ghBtn = new JButton("GitHub");
+                    JButton dsBtn = new JButton("DeepSeek");
+                    JButton ytBtn = new JButton("YouTube");
 
-                ghBtn.addActionListener(ev -> field.setText("https://github.com/"));
-                dsBtn.addActionListener(ev -> field.setText("https://chat.deepseek.com/"));
-                ytBtn.addActionListener(ev -> field.setText("https://youtube.com/"));
+                    ghBtn.addActionListener(ev -> field.setText("https://github.com/"));
+                    dsBtn.addActionListener(ev -> field.setText("https://chat.deepseek.com/"));
+                    ytBtn.addActionListener(ev -> field.setText("https://youtube.com/"));
 
-                iconPanel.add(ghBtn); iconPanel.add(dsBtn); iconPanel.add(ytBtn);
+                    iconPanel.add(ghBtn); iconPanel.add(dsBtn); iconPanel.add(ytBtn);
+                }
 
                 JButton okBtn = new JButton("OK");
                 okBtn.addActionListener(ev -> {
@@ -1098,7 +1112,9 @@ public class CommandCenter extends JFrame {
                 topPanel.add(field, BorderLayout.CENTER);
 
                 dialog.add(topPanel, BorderLayout.CENTER);
-                dialog.add(iconPanel, BorderLayout.NORTH);
+                if (showUrlButtons) {
+                    dialog.add(iconPanel, BorderLayout.NORTH);
+                }
                 dialog.add(okBtn, BorderLayout.SOUTH);
                 dialog.setVisible(true);
             } else {
