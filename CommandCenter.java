@@ -149,6 +149,9 @@ public class CommandCenter extends JFrame {
         cmdTabs.addTab(title, panel);
         cmdTabs.setTabComponentAt(count, new CloseableTab(cmdTabs, title, true));
         cmdTabs.setSelectedComponent(panel);
+        
+        // Fix: Apply the current theme to the newly created terminal
+        panel.updateTheme(currentBg, currentFg);
     }
     
     private void showThemeHelp() {
@@ -385,11 +388,18 @@ public class CommandCenter extends JFrame {
 
         public CmdPanel() {
             setLayout(new BorderLayout());
+            setOpaque(true);
+            
             console.setEditable(false);
+            console.setOpaque(true);
+            console.setBackground(currentBg);
             console.setMargin(new Insets(10, 10, 10, 10));
             
             JScrollPane scroll = new JScrollPane(console);
             scroll.setBorder(null);
+            scroll.setOpaque(true);
+            scroll.getViewport().setOpaque(true);
+            scroll.getViewport().setBackground(currentBg);
             scroll.getVerticalScrollBar().setUnitIncrement(16);
             
             // Floating Action Button (FAB) for Clear Screen
@@ -406,6 +416,11 @@ public class CommandCenter extends JFrame {
             clsFab.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
             clsFab.addActionListener(e -> executeCommand("cls"));
             
+            JPanel scrollWrapper = new JPanel(new BorderLayout());
+            scrollWrapper.setOpaque(true);
+            scrollWrapper.setBackground(currentBg);
+            scrollWrapper.add(scroll, BorderLayout.CENTER);
+            
             JPanel fabWrapper = new JPanel(new BorderLayout());
             fabWrapper.setOpaque(false);
             fabWrapper.setBorder(new EmptyBorder(0, 0, 20, 25));
@@ -415,18 +430,29 @@ public class CommandCenter extends JFrame {
             fabWrapper.add(fabHolder, BorderLayout.SOUTH);
             
             JLayeredPane layeredPane = new JLayeredPane();
-            layeredPane.setLayout(new OverlayLayout(layeredPane));
-            
-            JPanel scrollWrapper = new JPanel(new BorderLayout());
-            scrollWrapper.add(scroll, BorderLayout.CENTER);
-            
+            layeredPane.setLayout(null);
             layeredPane.add(scrollWrapper, Integer.valueOf(0));
             layeredPane.add(fabWrapper, Integer.valueOf(1));
+            layeredPane.addComponentListener(new ComponentAdapter() {
+                @Override
+                public void componentResized(ComponentEvent e) {
+                    scrollWrapper.setBounds(0, 0, layeredPane.getWidth(), layeredPane.getHeight());
+                    fabWrapper.setBounds(0, 0, layeredPane.getWidth(), layeredPane.getHeight());
+                }
+            });
             
             JPanel inputPanel = new JPanel(new BorderLayout());
+            inputPanel.setOpaque(true);
+            inputPanel.setBackground(currentBg);
             inputPanel.setBorder(new EmptyBorder(5, 5, 5, 5));
+            
             promptLabel.setFont(new Font(FONT_NAME, Font.BOLD, fontSize));
+            promptLabel.setForeground(currentFg);
+            
             input.setFont(new Font(FONT_NAME, Font.PLAIN, fontSize));
+            input.setBackground(currentBg.darker());
+            input.setForeground(currentFg);
+            input.setCaretColor(currentFg);
             input.setBorder(BorderFactory.createEmptyBorder(5, 5, 5, 5));
             
             inputPanel.add(promptLabel, BorderLayout.WEST);
@@ -609,8 +635,8 @@ public class CommandCenter extends JFrame {
         public void updateTheme(Color bg, Color fg) {
             currentBg = bg;
             currentFg = fg;
+            setBackground(bg);
             console.setBackground(bg);
-            console.setCaretColor(fg);
             input.setBackground(bg.darker());
             input.setForeground(fg);
             input.setCaretColor(fg);
