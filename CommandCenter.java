@@ -1,8 +1,11 @@
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
 import javax.swing.border.LineBorder;
+import javax.swing.event.TreeSelectionEvent;
 import javax.swing.plaf.basic.BasicButtonUI;
 import javax.swing.text.*;
+import javax.swing.tree.DefaultMutableTreeNode;
+import javax.swing.tree.DefaultTreeModel;
 import java.awt.*;
 import java.awt.event.*;
 import java.io.*;
@@ -28,6 +31,8 @@ public class CommandCenter extends JFrame {
     
     private final ThisPCPanel thisPCPanel;
     private final NetworkChuckPanel networkChuckPanel;
+    private final JavaPanel javaPanel;
+    private final HtmlPanel htmlPanel;
     private final JTextField themeInput = new JTextField(8);
     
     private boolean isNepaliDate = false;
@@ -45,7 +50,7 @@ public class CommandCenter extends JFrame {
         } catch (Exception ignored) {}
 
         setTitle("Command Prompt Wrapper");
-        setSize(1280, 850);
+        setSize(1400, 900);
         setDefaultCloseOperation(EXIT_ON_CLOSE);
         setLayout(new BorderLayout());
         setLocationRelativeTo(null);
@@ -61,6 +66,8 @@ public class CommandCenter extends JFrame {
         
         thisPCPanel = new ThisPCPanel(thisPcCmd, mainTabs, cmdTabs);
         networkChuckPanel = new NetworkChuckPanel(chuckCmd, mainTabs, cmdTabs);
+        javaPanel = new JavaPanel();
+        htmlPanel = new HtmlPanel();
 
         JPanel topPanel = new JPanel(new BorderLayout());
         topPanel.setBorder(new EmptyBorder(15, 20, 15, 20));
@@ -94,6 +101,8 @@ public class CommandCenter extends JFrame {
         mainTabs.addTab("CMD", cmdContainer);
         mainTabs.addTab("ThisPC", thisPCPanel);
         mainTabs.addTab("NetworkChuck", networkChuckPanel);
+        mainTabs.addTab("Java", javaPanel);
+        mainTabs.addTab("HTML", htmlPanel);
         
         JPanel bottomPanel = new JPanel(new BorderLayout(10, 0));
         bottomPanel.setBorder(new EmptyBorder(10, 20, 10, 20));
@@ -149,8 +158,6 @@ public class CommandCenter extends JFrame {
         cmdTabs.addTab(title, panel);
         cmdTabs.setTabComponentAt(count, new CloseableTab(cmdTabs, title, true));
         cmdTabs.setSelectedComponent(panel);
-        
-        // Fix: Apply the current theme to the newly created terminal
         panel.updateTheme(currentBg, currentFg);
     }
     
@@ -257,6 +264,12 @@ public class CommandCenter extends JFrame {
                 UIManager.put("TabbedPane.selected", bg.brighter());
                 UIManager.put("TabbedPane.selectedForeground", fg);
                 UIManager.put("TabbedPane.contentAreaColor", bg);
+                UIManager.put("Tree.background", bg.darker());
+                UIManager.put("Tree.foreground", fg);
+                UIManager.put("Tree.textBackground", bg.darker());
+                UIManager.put("Tree.textForeground", fg);
+                UIManager.put("Tree.selectionBackground", fg.darker());
+                UIManager.put("Tree.selectionForeground", bg.brighter());
                 
                 SwingUtilities.updateComponentTreeUI(this);
                 styleComponentTree(getContentPane(), bg, fg);
@@ -266,6 +279,8 @@ public class CommandCenter extends JFrame {
                     if (c instanceof CmdPanel) ((CmdPanel) c).updateTheme(bg, fg);
                 }
                 thisPCPanel.updateTheme(bg, fg);
+                javaPanel.updateTheme(bg, fg);
+                htmlPanel.updateTheme(bg, fg);
                 
                 this.getContentPane().setBackground(bg);
                 this.repaint();
@@ -314,8 +329,8 @@ public class CommandCenter extends JFrame {
             c.setBackground(bg);
             c.setForeground(fg);
             ((JComponent) c).setOpaque(true);
-        } else if (c instanceof JList || c instanceof JTable) {
-            c.setBackground(bg);
+        } else if (c instanceof JList || c instanceof JTable || c instanceof JTree) {
+            c.setBackground(bg.darker());
             c.setForeground(fg);
             ((JComponent) c).setOpaque(true);
         } else if (c instanceof JTabbedPane) {
@@ -402,7 +417,6 @@ public class CommandCenter extends JFrame {
             scroll.getViewport().setBackground(currentBg);
             scroll.getVerticalScrollBar().setUnitIncrement(16);
             
-            // Floating Action Button (FAB) for Clear Screen
             JButton clsFab = new JButton("CLS");
             clsFab.setFont(new Font("Segoe UI", Font.BOLD, 12));
             clsFab.setToolTipText("Clear Screen");
@@ -488,8 +502,6 @@ public class CommandCenter extends JFrame {
             StyleConstants.setFontFamily(style, FONT_NAME);
             StyleConstants.setFontSize(style, fontSize);
             StyleConstants.setForeground(style, currentFg);
-            
-            // -0.2f line spacing ensures block characters connect perfectly for QR codes
             StyleConstants.setLineSpacing(style, -0.2f); 
             
             console.setParagraphAttributes(style, true);
@@ -663,7 +675,6 @@ public class CommandCenter extends JFrame {
             this.mainTabs = mainTabs;
             this.cmdTabs = cmdTabs;
             
-            // Load initial path from preferences or default to user home
             currentPath = prefs.get("initialFolder", System.getProperty("user.home"));
             File testDir = new File(currentPath);
             if (!testDir.exists() || !testDir.isDirectory()) {
@@ -673,7 +684,6 @@ public class CommandCenter extends JFrame {
             setLayout(new BorderLayout(5, 5));
             setBorder(new EmptyBorder(10, 10, 10, 10));
             
-            // Top Bar (Buttons)
             JPanel topBar = new JPanel(new FlowLayout(FlowLayout.LEFT));
             JButton upBtn = new JButton("Up (cd ..)");
             JButton newFolderBtn = new JButton("New Folder");
@@ -685,7 +695,6 @@ public class CommandCenter extends JFrame {
             topBar.add(newFileBtn);
             topBar.add(setStartBtn);
             
-            // Path Bar
             JPanel pathPanel = new JPanel(new BorderLayout(5, 0));
             pathPanel.add(new JLabel("Location: "), BorderLayout.WEST);
             pathField.setEditable(false);
@@ -710,93 +719,61 @@ public class CommandCenter extends JFrame {
                                 refreshList();
                                 runCmd("cd /d \"" + currentPath + "\"");
                             } else {
-                                showOpenOptions(f);
+                                if (selected.endsWith(".java")) {
+                                    openFileEditor(f, false);
+                                } else if (selected.endsWith(".class")) {
+                                    String className = selected.replace(".class", "");
+                                    runCmd("java \"" + className + "\"");
+                                } else {
+                                    showOpenOptions(f);
+                                }
                             }
                         }
                     }
                 }
             });
-            
-            JPopupMenu popup = new JPopupMenu();
-            JMenuItem openNormalItem = new JMenuItem("Open (Normal)");
-            JMenuItem openBrailleItem = new JMenuItem("Open (Braille)");
-            JMenuItem renameItem = new JMenuItem("Rename");
-            JMenuItem deleteItem = new JMenuItem("Delete");
-            popup.add(openNormalItem);
-            popup.add(openBrailleItem);
-            popup.addSeparator();
-            popup.add(renameItem);
-            popup.add(deleteItem);
-            fileList.setComponentPopupMenu(popup);
             
             fileList.addMouseListener(new MouseAdapter() {
                 @Override
                 public void mousePressed(MouseEvent e) {
                     int row = fileList.locationToIndex(e.getPoint());
-                    if (row >= 0) fileList.setSelectedIndex(row);
-                }
-            });
-            
-            openNormalItem.addActionListener(e -> {
-                String selected = fileList.getSelectedValue();
-                if (selected != null && !selected.endsWith(" [DIR]")) {
-                    openFileEditor(new File(currentPath, selected), false);
-                }
-            });
-            
-            openBrailleItem.addActionListener(e -> {
-                String selected = fileList.getSelectedValue();
-                if (selected != null && !selected.endsWith(" [DIR]")) {
-                    openFileEditor(new File(currentPath, selected), true);
-                }
-            });
-            
-            renameItem.addActionListener(e -> {
-                String selected = fileList.getSelectedValue();
-                if (selected != null) {
-                    String oldName = selected.replace(" [DIR]", "");
-                    String newName = (String) JOptionPane.showInputDialog(
-                            SwingUtilities.getWindowAncestor(this),
-                            "Enter new name for " + oldName + ":",
-                            "Rename",
-                            JOptionPane.QUESTION_MESSAGE,
-                            null,
-                            null,
-                            oldName
-                    );
-                    if (newName != null && !newName.trim().isEmpty() && !newName.equals(oldName)) {
-                        File oldFile = new File(currentPath, oldName);
-                        File newFile = new File(currentPath, newName);
-                        try {
-                            Files.move(oldFile.toPath(), newFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
-                            refreshList();
-                        } catch (IOException ex) {
-                            JOptionPane.showMessageDialog(this, "Rename failed: " + ex.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
-                        }
-                    }
-                }
-            });
-            
-            deleteItem.addActionListener(e -> {
-                String selected = fileList.getSelectedValue();
-                if (selected != null) {
-                    String fileName = selected.replace(" [DIR]", "");
-                    boolean isDir = selected.endsWith(" [DIR]");
-                    int confirm = JOptionPane.showConfirmDialog(this, "Delete " + fileName + " permanently?", "Confirm Delete", JOptionPane.YES_NO_OPTION);
-                    if (confirm == JOptionPane.YES_OPTION) {
-                        File target = new File(currentPath, fileName);
-                        try {
-                            if (isDir) {
-                                Files.walk(target.toPath())
-                                     .sorted(Comparator.reverseOrder())
-                                     .map(Path::toFile)
-                                     .forEach(File::delete);
-                            } else {
-                                Files.deleteIfExists(target.toPath());
+                    if (row >= 0) {
+                        fileList.setSelectedIndex(row);
+                        if (SwingUtilities.isRightMouseButton(e)) {
+                            String selected = fileList.getSelectedValue();
+                            if (selected != null && !selected.endsWith(" [DIR]")) {
+                                JPopupMenu popup = new JPopupMenu();
+                                
+                                if (selected.endsWith(".java")) {
+                                    JMenuItem compileItem = new JMenuItem("Compile (.java)");
+                                    compileItem.addActionListener(ev -> {
+                                        runCmd("javac \"" + selected + "\"");
+                                        JOptionPane.showMessageDialog(ThisPCPanel.this, "Compile command sent to terminal.");
+                                    });
+                                    popup.add(compileItem);
+                                    popup.addSeparator();
+                                }
+                                
+                                JMenuItem openNormalItem = new JMenuItem("Open (Normal)");
+                                openNormalItem.addActionListener(ev -> openFileEditor(new File(currentPath, selected), false));
+                                popup.add(openNormalItem);
+                                
+                                JMenuItem openBrailleItem = new JMenuItem("Open (Braille)");
+                                openBrailleItem.addActionListener(ev -> openFileEditor(new File(currentPath, selected), true));
+                                popup.add(openBrailleItem);
+                                
+                                popup.addSeparator();
+                                
+                                JMenuItem renameItem = new JMenuItem("Rename");
+                                renameItem.addActionListener(ev -> renameFile(selected));
+                                popup.add(renameItem);
+                                
+                                JMenuItem deleteItem = new JMenuItem("Delete");
+                                deleteItem.addActionListener(ev -> deleteFile(selected));
+                                popup.add(deleteItem);
+                                
+                                popup.show(fileList, e.getX(), e.getY());
                             }
-                            refreshList();
-                        } catch (IOException ex) {
-                            JOptionPane.showMessageDialog(this, "Delete failed: " + ex.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
                         }
                     }
                 }
@@ -863,6 +840,51 @@ public class CommandCenter extends JFrame {
                 });
                 for (File f : files) {
                     listModel.addElement(f.getName() + (f.isDirectory() ? " [DIR]" : ""));
+                }
+            }
+        }
+        
+        private void renameFile(String selected) {
+            String oldName = selected.replace(" [DIR]", "");
+            String newName = (String) JOptionPane.showInputDialog(
+                    SwingUtilities.getWindowAncestor(this),
+                    "Enter new name for " + oldName + ":",
+                    "Rename",
+                    JOptionPane.QUESTION_MESSAGE,
+                    null,
+                    null,
+                    oldName
+            );
+            if (newName != null && !newName.trim().isEmpty() && !newName.equals(oldName)) {
+                File oldFile = new File(currentPath, oldName);
+                File newFile = new File(currentPath, newName);
+                try {
+                    Files.move(oldFile.toPath(), newFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
+                    refreshList();
+                } catch (IOException ex) {
+                    JOptionPane.showMessageDialog(this, "Rename failed: " + ex.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
+                }
+            }
+        }
+        
+        private void deleteFile(String selected) {
+            String fileName = selected.replace(" [DIR]", "");
+            boolean isDir = selected.endsWith(" [DIR]");
+            int confirm = JOptionPane.showConfirmDialog(this, "Delete " + fileName + " permanently?", "Confirm Delete", JOptionPane.YES_NO_OPTION);
+            if (confirm == JOptionPane.YES_OPTION) {
+                File target = new File(currentPath, fileName);
+                try {
+                    if (isDir) {
+                        Files.walk(target.toPath())
+                             .sorted(Comparator.reverseOrder())
+                             .map(Path::toFile)
+                             .forEach(File::delete);
+                    } else {
+                        Files.deleteIfExists(target.toPath());
+                    }
+                    refreshList();
+                } catch (IOException ex) {
+                    JOptionPane.showMessageDialog(this, "Delete failed: " + ex.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
                 }
             }
         }
@@ -1091,11 +1113,9 @@ public class CommandCenter extends JFrame {
             addAdvancedButton(panel, "curl checkip.amazonaws.com", "curl <INPUT>", "TEXT:checkip.amazonaws.com", "curl checkip.amazonaws.com");
             addAdvancedButton(panel, "curl qrcode.show/https://networkchuck.com", "curl qrcode.show/<INPUT>", "TEXT:https://networkchuck.com", "curl qrcode.show/https://networkchuck.com");
             
-            // Updated Channel ID input type
             addAdvancedButton(panel, "curl -s \"https://www.youtube.com/feeds/videos.xml?channel_id=...\"", "curl -s \"https://www.youtube.com/feeds/videos.xml?channel_id=<INPUT>\"", "CHANNEL_ID:UC2eYFnH61tmytImy1mTYvhA", "curl -s \"https://www.youtube.com/feeds/videos.xml?channel_id=UC2eYFnH61tmytImy1mTYvhA\"");
 
             addAdvancedButton(panel, "start https://networkchuck.com", "start <INPUT>", "TEXT:https://networkchuck.com", "start https://github.com");
-            addAdvancedButton(panel, "doskey /history", null, null, "doskey /history");
             
             return panel;
         }
@@ -1144,6 +1164,7 @@ public class CommandCenter extends JFrame {
 
             String defaultValue = "";
             boolean showUrlButtons = false;
+            boolean isChannelId = false;
             
             if (inputType != null) {
                 if (inputType.startsWith("TEXT:")) {
@@ -1153,7 +1174,8 @@ public class CommandCenter extends JFrame {
                 } else if (inputType.startsWith("CHANNEL_ID:")) {
                     defaultValue = inputType.substring(11);
                     inputType = "TEXT";
-                    showUrlButtons = false; // Don't show URL buttons for Channel IDs
+                    showUrlButtons = false; 
+                    isChannelId = true;
                 }
             }
 
@@ -1200,7 +1222,11 @@ public class CommandCenter extends JFrame {
                 });
 
                 JPanel topPanel = new JPanel(new BorderLayout());
-                topPanel.add(new JLabel("Enter value for: " + cmd), BorderLayout.NORTH);
+                if (isChannelId) {
+                    topPanel.add(new JLabel("<html><b>Enter YouTube Channel ID</b><br>(Starts with 'UC'. Do not use @handles)</html>"), BorderLayout.NORTH);
+                } else {
+                    topPanel.add(new JLabel("Enter value for: " + cmd), BorderLayout.NORTH);
+                }
                 topPanel.add(field, BorderLayout.CENTER);
 
                 dialog.add(topPanel, BorderLayout.CENTER);
@@ -1290,6 +1316,391 @@ public class CommandCenter extends JFrame {
     }
     
     // =========================================================================
+    // Java Editor Panel
+    // =========================================================================
+    static class JavaPanel extends JPanel {
+        private final JTextArea editor = new JTextArea();
+        private final JTextArea outputConsole = new JTextArea();
+        private final JTree fileTree;
+        private final DefaultMutableTreeNode rootNode;
+        private final DefaultTreeModel treeModel;
+        private final JPanel treeContainer;
+        private boolean isTreeVisible = true;
+        private File currentProjectDir = new File("C:\\Users\\NewAdmin\\Desktop\\Projects");
+        private File currentFile = null;
+        private final JPanel mainContent;
+
+        public JavaPanel() {
+            setLayout(new BorderLayout());
+            setBorder(new EmptyBorder(5, 5, 5, 5));
+
+            // Toolbar
+            JPanel toolbar = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 5));
+            JButton selectFolderBtn = new JButton("Select Folder");
+            JButton newFileBtn = new JButton("New File");
+            JButton toggleTreeBtn = new JButton("☰");
+            toggleTreeBtn.setToolTipText("Toggle File Tree");
+            JButton saveBtn = new JButton("Save");
+            JButton runBtn = new JButton("Run");
+            JButton saveRunBtn = new JButton("Save & Run");
+            toolbar.add(selectFolderBtn);
+            toolbar.add(newFileBtn);
+            toolbar.add(toggleTreeBtn);
+            toolbar.add(saveBtn);
+            toolbar.add(runBtn);
+            toolbar.add(saveRunBtn);
+
+            // Tree Setup
+            rootNode = new DefaultMutableTreeNode(currentProjectDir.getName());
+            treeModel = new DefaultTreeModel(rootNode);
+            fileTree = new JTree(treeModel);
+            fileTree.setFont(new Font("Segoe UI", Font.PLAIN, 14));
+            buildTree(rootNode, currentProjectDir);
+            
+            JScrollPane treeScroll = new JScrollPane(fileTree);
+            treeContainer = new JPanel(new BorderLayout());
+            treeContainer.add(treeScroll, BorderLayout.CENTER);
+            treeContainer.setPreferredSize(new Dimension(250, 0));
+
+            // Editor Setup
+            editor.setFont(new Font("Consolas", Font.PLAIN, 14));
+            editor.setTabSize(4);
+            
+            // Auto-Indent and Auto-Bracket Setup
+            setupEditorKeyBindings(editor);
+            
+            JScrollPane editorScroll = new JScrollPane(editor);
+
+            // Output Console Setup
+            outputConsole.setFont(new Font("Consolas", Font.PLAIN, 12));
+            outputConsole.setEditable(false);
+            outputConsole.setBackground(new Color(30, 30, 30));
+            outputConsole.setForeground(Color.LIGHT_GRAY);
+            JScrollPane outputScroll = new JScrollPane(outputConsole);
+            outputScroll.setPreferredSize(new Dimension(0, 150));
+
+            JPanel rightPanel = new JPanel(new BorderLayout());
+            rightPanel.add(editorScroll, BorderLayout.CENTER);
+            rightPanel.add(outputScroll, BorderLayout.SOUTH);
+
+            JPanel centerPanel = new JPanel(new BorderLayout());
+            centerPanel.add(treeContainer, BorderLayout.WEST);
+            centerPanel.add(rightPanel, BorderLayout.CENTER);
+
+            mainContent = new JPanel(new BorderLayout());
+            mainContent.add(centerPanel, BorderLayout.CENTER);
+
+            add(toolbar, BorderLayout.NORTH);
+            add(mainContent, BorderLayout.CENTER);
+
+            // Actions
+            toggleTreeBtn.addActionListener(e -> {
+                isTreeVisible = !isTreeVisible;
+                treeContainer.setVisible(isTreeVisible);
+                mainContent.revalidate();
+                mainContent.repaint();
+            });
+
+            selectFolderBtn.addActionListener(e -> {
+                JFileChooser chooser = new JFileChooser(currentProjectDir);
+                chooser.setFileSelectionMode(JFileChooser.DIRECTORIES_ONLY);
+                chooser.setDialogTitle("Select Project Folder");
+                if (chooser.showOpenDialog(this) == JFileChooser.APPROVE_OPTION) {
+                    currentProjectDir = chooser.getSelectedFile();
+                    rootNode.setUserObject(currentProjectDir.getName());
+                    rootNode.removeAllChildren();
+                    buildTree(rootNode, currentProjectDir);
+                    treeModel.reload();
+                }
+            });
+
+            newFileBtn.addActionListener(e -> {
+                String name = JOptionPane.showInputDialog(this, "Enter file name (e.g., Main.java):");
+                if (name != null && !name.trim().isEmpty()) {
+                    if (!name.endsWith(".java")) name += ".java";
+                    
+                    File srcDir = new File(currentProjectDir, "src");
+                    if (!srcDir.exists()) srcDir.mkdirs();
+                    
+                    File newFile = new File(srcDir, name);
+                    try {
+                        if (newFile.createNewFile()) {
+                            editor.setText("public class " + name.replace(".java", "") + " {\n    public static void main(String[] args) {\n        \n    }\n}");
+                            currentFile = newFile;
+                            rootNode.removeAllChildren();
+                            buildTree(rootNode, currentProjectDir);
+                            treeModel.reload();
+                        } else {
+                            JOptionPane.showMessageDialog(this, "File already exists.");
+                        }
+                    } catch (IOException ex) {
+                        JOptionPane.showMessageDialog(this, "Error creating file: " + ex.getMessage());
+                    }
+                }
+            });
+
+            fileTree.addTreeSelectionListener((TreeSelectionEvent e) -> {
+                DefaultMutableTreeNode node = (DefaultMutableTreeNode) fileTree.getLastSelectedPathComponent();
+                if (node != null) {
+                    File selectedFile = getFileFromNode(node);
+                    if (selectedFile != null && selectedFile.isFile() && selectedFile.getName().endsWith(".java")) {
+                        try {
+                            editor.setText(Files.readString(selectedFile.toPath(), StandardCharsets.UTF_8));
+                            currentFile = selectedFile;
+                        } catch (IOException ex) {
+                            outputConsole.append("Error reading file: " + ex.getMessage() + "\n");
+                        }
+                    }
+                }
+            });
+
+            saveBtn.addActionListener(e -> saveJavaFile(false));
+            runBtn.addActionListener(e -> saveJavaFile(true));
+            saveRunBtn.addActionListener(e -> saveJavaFile(true));
+        }
+
+        private void setupEditorKeyBindings(JTextArea textArea) {
+            InputMap im = textArea.getInputMap();
+            ActionMap am = textArea.getActionMap();
+
+            // Auto-Indent
+            im.put(KeyStroke.getKeyStroke(KeyEvent.VK_ENTER, 0), "autoIndent");
+            am.put("autoIndent", new AbstractAction() {
+                @Override
+                public void actionPerformed(ActionEvent e) {
+                    try {
+                        int caretPos = textArea.getCaretPosition();
+                        int line = textArea.getLineOfOffset(caretPos);
+                        int start = textArea.getLineStartOffset(line);
+                        String text = textArea.getText(start, caretPos - start);
+                        
+                        StringBuilder indent = new StringBuilder();
+                        for (char c : text.toCharArray()) {
+                            if (c == ' ' || c == '\t') indent.append(c);
+                            else break;
+                        }
+                        
+                        String insert = "\n" + indent.toString();
+                        if (text.trim().endsWith("{")) {
+                            insert += "    ";
+                        }
+                        textArea.replaceSelection(insert);
+                    } catch (Exception ex) {
+                        textArea.replaceSelection("\n");
+                    }
+                }
+            });
+
+            // Auto-Brackets
+            setupBracket(im, am, '{', '}', KeyEvent.VK_BRACELEFT);
+            setupBracket(im, am, '(', ')', KeyEvent.VK_9); // Shift+9
+            setupBracket(im, am, '[', ']', KeyEvent.VK_OPEN_BRACKET);
+            setupBracket(im, am, '"', '"', KeyEvent.VK_QUOTE);
+        }
+
+        private void setupBracket(InputMap im, ActionMap am, char open, char close, int keyCode) {
+            String key = "typed " + open;
+            im.put(KeyStroke.getKeyStroke(open), key);
+            im.put(KeyStroke.getKeyStroke(keyCode, 0), key);
+            
+            am.put(key, new AbstractAction() {
+                @Override
+                public void actionPerformed(ActionEvent e) {
+                    int start = editor.getSelectionStart();
+                    int end = editor.getSelectionEnd();
+                    if (start != end) {
+                        String selected = editor.getSelectedText();
+                        editor.replaceSelection(open + selected + close);
+                    } else {
+                        editor.replaceSelection(open + "" + close);
+                        editor.setCaretPosition(editor.getCaretPosition() - 1);
+                    }
+                }
+            });
+        }
+
+        private void buildTree(DefaultMutableTreeNode parent, File dir) {
+            File[] files = dir.listFiles();
+            if (files != null) {
+                Arrays.sort(files, (a, b) -> {
+                    if (a.isDirectory() && !b.isDirectory()) return -1;
+                    if (!a.isDirectory() && b.isDirectory()) return 1;
+                    return a.getName().compareToIgnoreCase(b.getName());
+                });
+                for (File f : files) {
+                    DefaultMutableTreeNode node = new DefaultMutableTreeNode(f.getName());
+                    parent.add(node);
+                    if (f.isDirectory()) {
+                        buildTree(node, f);
+                    }
+                }
+            }
+        }
+
+        private File getFileFromNode(DefaultMutableTreeNode node) {
+            StringBuilder path = new StringBuilder(currentProjectDir.getAbsolutePath());
+            Object[] userObjects = node.getUserObjectPath();
+            for (int i = 1; i < userObjects.length; i++) {
+                path.append(File.separator).append(userObjects[i]);
+            }
+            return new File(path.toString());
+        }
+
+        private void saveJavaFile(boolean run) {
+            if (currentFile == null || !currentFile.getName().endsWith(".java")) {
+                JOptionPane.showMessageDialog(this, "Please select a .java file from the tree first.");
+                return;
+            }
+
+            String className = currentFile.getName().replace(".java", "");
+            
+            String[] reserved = {"abstract", "assert", "boolean", "break", "byte", "case", "catch", "char", "class", "const", "continue", "default", "do", "double", "else", "enum", "extends", "final", "finally", "float", "for", "goto", "if", "implements", "import", "instanceof", "int", "interface", "long", "native", "new", "package", "private", "protected", "public", "return", "short", "static", "strictfp", "super", "switch", "synchronized", "this", "throw", "throws", "transient", "try", "void", "volatile", "while", "true", "false", "null"};
+            if (Arrays.asList(reserved).contains(className)) {
+                outputConsole.append("Error: '" + className + "' is a reserved keyword in Java.\nPlease rename the file.\n");
+                JOptionPane.showMessageDialog(this, "'" + className + "' is a reserved Java keyword.\nPlease rename the file to something else (e.g., MyClass.java)");
+                return;
+            }
+
+            File srcDir = new File(currentProjectDir, "src");
+            File binDir = new File(currentProjectDir, "bin");
+
+            try {
+                if (!srcDir.exists()) srcDir.mkdirs();
+                if (!binDir.exists()) binDir.mkdirs();
+
+                File sourceFile;
+                if (currentFile.getParentFile().getAbsolutePath().equals(srcDir.getAbsolutePath())) {
+                    sourceFile = currentFile;
+                } else {
+                    sourceFile = new File(srcDir, currentFile.getName());
+                }
+                
+                Files.writeString(sourceFile.toPath(), editor.getText(), StandardCharsets.UTF_8);
+                currentFile = sourceFile;
+                outputConsole.append("Saved to: " + sourceFile.getAbsolutePath() + "\n");
+                
+                // Refresh tree
+                rootNode.removeAllChildren();
+                buildTree(rootNode, currentProjectDir);
+                treeModel.reload();
+
+                if (run) {
+                    outputConsole.append("Compiling...\n");
+                    Process p = new ProcessBuilder("javac", "-d", binDir.getAbsolutePath(), sourceFile.getAbsolutePath())
+                            .redirectErrorStream(true).start();
+                    BufferedReader reader = new BufferedReader(new InputStreamReader(p.getInputStream()));
+                    String line;
+                    while ((line = reader.readLine()) != null) {
+                        outputConsole.append(line + "\n");
+                    }
+                    p.waitFor();
+
+                    if (p.exitValue() == 0) {
+                        outputConsole.append("Running...\n");
+                        Process runP = new ProcessBuilder("java", "-cp", binDir.getAbsolutePath(), className)
+                                .redirectErrorStream(true).start();
+                        BufferedReader runReader = new BufferedReader(new InputStreamReader(runP.getInputStream()));
+                        while ((line = runReader.readLine()) != null) {
+                            outputConsole.append(line + "\n");
+                        }
+                        runP.waitFor();
+                    }
+                }
+            } catch (Exception ex) {
+                outputConsole.append("Error: " + ex.getMessage() + "\n");
+            }
+        }
+
+        public void updateTheme(Color bg, Color fg) {
+            setBackground(bg);
+            editor.setBackground(bg.darker());
+            editor.setForeground(fg);
+            fileTree.setBackground(bg.darker());
+            fileTree.setForeground(fg);
+            outputConsole.setBackground(bg.darker().darker());
+            outputConsole.setForeground(fg);
+        }
+    }
+
+    // =========================================================================
+    // HTML Editor Panel
+    // =========================================================================
+    static class HtmlPanel extends JPanel {
+        private final JTextArea editor = new JTextArea();
+        private File currentHtmlFile = null;
+
+        public HtmlPanel() {
+            setLayout(new BorderLayout());
+            setBorder(new EmptyBorder(5, 5, 5, 5));
+
+            JPanel toolbar = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 5));
+            JButton openBtn = new JButton("Open HTML File");
+            JButton saveBtn = new JButton("Save");
+            JButton previewBtn = new JButton("Preview in Browser");
+            toolbar.add(openBtn);
+            toolbar.add(saveBtn);
+            toolbar.add(previewBtn);
+
+            editor.setFont(new Font("Consolas", Font.PLAIN, 14));
+            editor.setTabSize(4);
+            editor.setText("<!DOCTYPE html>\n<html>\n<head>\n    <title>New Page</title>\n</head>\n<body>\n    <h1>Hello World</h1>\n</body>\n</html>");
+            
+            JScrollPane scroll = new JScrollPane(editor);
+
+            add(toolbar, BorderLayout.NORTH);
+            add(scroll, BorderLayout.CENTER);
+
+            openBtn.addActionListener(e -> {
+                JFileChooser chooser = new JFileChooser("C:\\Users\\NewAdmin\\Desktop\\Projects");
+                if (chooser.showOpenDialog(this) == JFileChooser.APPROVE_OPTION) {
+                    currentHtmlFile = chooser.getSelectedFile();
+                    try {
+                        editor.setText(Files.readString(currentHtmlFile.toPath(), StandardCharsets.UTF_8));
+                    } catch (IOException ex) {
+                        JOptionPane.showMessageDialog(this, "Error reading file: " + ex.getMessage());
+                    }
+                }
+            });
+
+            saveBtn.addActionListener(e -> {
+                if (currentHtmlFile == null) {
+                    JFileChooser chooser = new JFileChooser("C:\\Users\\NewAdmin\\Desktop\\Projects");
+                    chooser.setSelectedFile(new File("index.html"));
+                    if (chooser.showSaveDialog(this) == JFileChooser.APPROVE_OPTION) {
+                        currentHtmlFile = chooser.getSelectedFile();
+                    } else {
+                        return;
+                    }
+                }
+                try {
+                    Files.writeString(currentHtmlFile.toPath(), editor.getText(), StandardCharsets.UTF_8);
+                    JOptionPane.showMessageDialog(this, "Saved successfully!");
+                } catch (IOException ex) {
+                    JOptionPane.showMessageDialog(this, "Error saving: " + ex.getMessage());
+                }
+            });
+
+            previewBtn.addActionListener(e -> {
+                if (currentHtmlFile == null) {
+                    JOptionPane.showMessageDialog(this, "Please save the file first.");
+                    return;
+                }
+                try {
+                    Desktop.getDesktop().browse(currentHtmlFile.toURI());
+                } catch (IOException ex) {
+                    JOptionPane.showMessageDialog(this, "Error opening browser: " + ex.getMessage());
+                }
+            });
+        }
+
+        public void updateTheme(Color bg, Color fg) {
+            setBackground(bg);
+            editor.setBackground(bg.darker());
+            editor.setForeground(fg);
+        }
+    }
+    
+    // =========================================================================
     // Custom Braille Grid Panel
     // =========================================================================
     static class BrailleGridPanel extends JPanel {
@@ -1298,8 +1709,9 @@ public class CommandCenter extends JFrame {
         private final Font consolas;
         private final Font fallback;
 
-        public BrailleGridPanel(String text) {
-            this.text = text;
+        public BrailleGridPanel(String originalText) {
+            this.text = originalText.replaceAll("\\$[1-9]", " "); 
+            
             this.consolas = new Font("Consolas", Font.PLAIN, fontSize);
             this.fallback = new Font("Segoe UI Symbol", Font.PLAIN, fontSize);
             setBackground(Color.BLACK);
@@ -1364,7 +1776,6 @@ public class CommandCenter extends JFrame {
                 for (char c : line.toCharArray()) {
                     if (c == '\r') continue;
                     
-                    // Use Consolas by default, fallback to Segoe UI Symbol for Braille
                     if (c >= '\u2800' && c <= '\u28FF' && !cFont.canDisplay(c)) {
                         g2.setFont(fFont);
                     } else {
