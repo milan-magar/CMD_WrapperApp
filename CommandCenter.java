@@ -2,7 +2,7 @@ import javax.swing.*;
 import javax.swing.border.EmptyBorder;
 import javax.swing.border.LineBorder;
 import javax.swing.plaf.basic.BasicButtonUI;
-import javax.swing.text.JTextComponent;
+import javax.swing.text.*;
 import java.awt.*;
 import java.awt.event.*;
 import java.io.*;
@@ -370,26 +370,58 @@ public class CommandCenter extends JFrame {
     // CMD Panel
     // =========================================================================
     static class CmdPanel extends JPanel {
-        private final JTextArea console = new JTextArea();
+        private final JTextPane console = new JTextPane();
         private final JTextField input = new JTextField();
         private String currentPath = "C:\\Users";
         private final JLabel promptLabel = new JLabel();
         private Process shellProcess;
         private BufferedWriter shellWriter;
         private int fontSize = 14;
+        private Color currentBg = Color.BLACK;
+        private Color currentFg = Color.WHITE;
         
         private static final String PROMPT_TOKEN = "~CMD_WRAPPER_PROMPT_9F8X~";
-        private final String FONT_NAME = "Cascadia Mono"; 
+        private final String FONT_NAME = "Consolas"; 
 
         public CmdPanel() {
             setLayout(new BorderLayout());
             console.setEditable(false);
-            console.setFont(new Font(FONT_NAME, Font.PLAIN, fontSize));
             console.setMargin(new Insets(10, 10, 10, 10));
             
             JScrollPane scroll = new JScrollPane(console);
             scroll.setBorder(null);
             scroll.getVerticalScrollBar().setUnitIncrement(16);
+            
+            // Floating Action Button (FAB) for Clear Screen
+            JButton clsFab = new JButton("CLS");
+            clsFab.setFont(new Font("Segoe UI", Font.BOLD, 12));
+            clsFab.setToolTipText("Clear Screen");
+            clsFab.setFocusPainted(false);
+            clsFab.setBackground(new Color(60, 60, 60));
+            clsFab.setForeground(Color.WHITE);
+            clsFab.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(new Color(100, 100, 100), 1),
+                BorderFactory.createEmptyBorder(5, 15, 5, 15)
+            ));
+            clsFab.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+            clsFab.addActionListener(e -> executeCommand("cls"));
+            
+            JPanel fabWrapper = new JPanel(new BorderLayout());
+            fabWrapper.setOpaque(false);
+            fabWrapper.setBorder(new EmptyBorder(0, 0, 20, 25));
+            JPanel fabHolder = new JPanel(new FlowLayout(FlowLayout.RIGHT, 0, 0));
+            fabHolder.setOpaque(false);
+            fabHolder.add(clsFab);
+            fabWrapper.add(fabHolder, BorderLayout.SOUTH);
+            
+            JLayeredPane layeredPane = new JLayeredPane();
+            layeredPane.setLayout(new OverlayLayout(layeredPane));
+            
+            JPanel scrollWrapper = new JPanel(new BorderLayout());
+            scrollWrapper.add(scroll, BorderLayout.CENTER);
+            
+            layeredPane.add(scrollWrapper, Integer.valueOf(0));
+            layeredPane.add(fabWrapper, Integer.valueOf(1));
             
             JPanel inputPanel = new JPanel(new BorderLayout());
             inputPanel.setBorder(new EmptyBorder(5, 5, 5, 5));
@@ -400,15 +432,42 @@ public class CommandCenter extends JFrame {
             inputPanel.add(promptLabel, BorderLayout.WEST);
             inputPanel.add(input, BorderLayout.CENTER);
             
-            add(scroll, BorderLayout.CENTER);
+            add(layeredPane, BorderLayout.CENTER);
             add(inputPanel, BorderLayout.SOUTH);
             
             input.addActionListener(e -> executeCommand(input.getText()));
             
             updatePromptLabel();
             setupZoom(scroll, console, input);
+            applyFontSettings();
             
             startShell();
+        }
+        
+        private void appendText(String text) {
+            SwingUtilities.invokeLater(() -> {
+                try {
+                    Document doc = console.getDocument();
+                    doc.insertString(doc.getLength(), text, null);
+                    console.setCaretPosition(doc.getLength());
+                } catch (BadLocationException e) {
+                    e.printStackTrace();
+                }
+            });
+        }
+        
+        private void applyFontSettings() {
+            StyledDocument doc = console.getStyledDocument();
+            SimpleAttributeSet style = new SimpleAttributeSet();
+            StyleConstants.setFontFamily(style, FONT_NAME);
+            StyleConstants.setFontSize(style, fontSize);
+            StyleConstants.setForeground(style, currentFg);
+            
+            // -0.2f line spacing ensures block characters connect perfectly for QR codes
+            StyleConstants.setLineSpacing(style, -0.2f); 
+            
+            console.setParagraphAttributes(style, true);
+            doc.setCharacterAttributes(0, doc.getLength(), style, false);
         }
         
         private void updatePromptLabel() {
@@ -452,7 +511,7 @@ public class CommandCenter extends JFrame {
         }
         
         private void updateFontSize() {
-            console.setFont(new Font(FONT_NAME, Font.PLAIN, fontSize));
+            applyFontSettings();
             input.setFont(new Font(FONT_NAME, Font.PLAIN, fontSize));
             promptLabel.setFont(new Font(FONT_NAME, Font.BOLD, fontSize));
         }
@@ -476,7 +535,7 @@ public class CommandCenter extends JFrame {
                                 continue;
                             }
                             String cleanLine = line.replaceAll("\u001B\\[[;\\d]*[mK]", "");
-                            SwingUtilities.invokeLater(() -> console.append(cleanLine + "\n"));
+                            appendText(cleanLine + "\n");
                         }
                     } catch (IOException e) {
                         e.printStackTrace();
@@ -487,36 +546,41 @@ public class CommandCenter extends JFrame {
                 
                 SwingUtilities.invokeLater(() -> {
                     try {
-                        // Force UTF-8 so tree symbols display correctly
                         shellWriter.write("chcp 65001>nul\r\n");
                         shellWriter.write("prompt " + PROMPT_TOKEN + "\r\n");
                         shellWriter.write("cd /d " + currentPath + "\r\n");
                         shellWriter.write("cls\r\n");
                         shellWriter.flush();
+                        
+                        console.setText("");
+                        applyFontSettings();
                     } catch (IOException ignored) {}
                 });
                 
             } catch (Exception e) {
-                console.append("Failed to start shell: " + e.getMessage() + "\n");
+                appendText("Failed to start shell: " + e.getMessage() + "\n");
             }
         }
         
         public void executeCommand(String cmd) {
             if (cmd.trim().isEmpty()) return;
             if (cmd.trim().equalsIgnoreCase("cls")) {
-                console.setText("");
+                SwingUtilities.invokeLater(() -> {
+                    console.setText("");
+                    applyFontSettings();
+                });
                 input.setText("");
                 return;
             }
             
-            console.append(currentPath + "> " + cmd + "\n");
+            appendText(currentPath + "> " + cmd + "\n");
             input.setText("");
             
             try {
                 shellWriter.write(cmd + "\r\n");
                 shellWriter.flush();
             } catch (IOException e) {
-                console.append("Error: " + e.getMessage() + "\n");
+                appendText("Error: " + e.getMessage() + "\n");
             }
             
             if (cmd.trim().toLowerCase().startsWith("cd ")) {
@@ -543,13 +607,15 @@ public class CommandCenter extends JFrame {
         }
         
         public void updateTheme(Color bg, Color fg) {
+            currentBg = bg;
+            currentFg = fg;
             console.setBackground(bg);
-            console.setForeground(fg);
             console.setCaretColor(fg);
             input.setBackground(bg.darker());
             input.setForeground(fg);
             input.setCaretColor(fg);
             promptLabel.setForeground(fg);
+            applyFontSettings();
         }
     }
 
