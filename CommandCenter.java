@@ -100,11 +100,10 @@ public class CommandCenter extends JFrame {
         cmdContainer.add(cmdToolbar, BorderLayout.NORTH);
         cmdContainer.add(cmdTabs, BorderLayout.CENTER);
         
+        // Only add CMD, ThisPC, and NetworkChuck initially
         mainTabs.addTab("CMD", cmdContainer);
         mainTabs.addTab("ThisPC", thisPCPanel);
         mainTabs.addTab("NetworkChuck", networkChuckPanel);
-        mainTabs.addTab("Java", javaPanel);
-        mainTabs.addTab("HTML", htmlPanel);
         
         JPanel bottomPanel = new JPanel(new BorderLayout(10, 0));
         bottomPanel.setBorder(new EmptyBorder(10, 20, 10, 20));
@@ -144,6 +143,9 @@ public class CommandCenter extends JFrame {
         add(mainTabs, BorderLayout.CENTER);
         add(bottomPanel, BorderLayout.SOUTH);
         
+        // Setup Hidden Tabs Keybindings
+        setupGlobalKeyBindings();
+        
         updateDate();
         javax.swing.Timer timer = new javax.swing.Timer(1000, e -> updateDate());
         timer.start();
@@ -151,6 +153,38 @@ public class CommandCenter extends JFrame {
         String savedTheme = prefs.get("theme", "01");
         themeInput.setText(savedTheme);
         applyTheme(savedTheme); 
+    }
+    
+    private void setupGlobalKeyBindings() {
+        InputMap im = getRootPane().getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW);
+        ActionMap am = getRootPane().getActionMap();
+
+        // Ctrl + Alt + J for Java Tab
+        im.put(KeyStroke.getKeyStroke(KeyEvent.VK_J, InputEvent.CTRL_DOWN_MASK | InputEvent.ALT_DOWN_MASK), "showJava");
+        am.put("showJava", new AbstractAction() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                openTab("Java", javaPanel);
+            }
+        });
+
+        // Ctrl + Alt + H for HTML Tab
+        im.put(KeyStroke.getKeyStroke(KeyEvent.VK_H, InputEvent.CTRL_DOWN_MASK | InputEvent.ALT_DOWN_MASK), "showHtml");
+        am.put("showHtml", new AbstractAction() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                openTab("HTML", htmlPanel);
+            }
+        });
+    }
+
+    private void openTab(String title, Component component) {
+        int index = mainTabs.indexOfTab(title);
+        if (index == -1) {
+            mainTabs.addTab(title, component);
+            index = mainTabs.indexOfTab(title);
+        }
+        mainTabs.setSelectedIndex(index);
     }
     
     private void addNewCmdTab() {
