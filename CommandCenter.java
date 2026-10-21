@@ -1,6 +1,8 @@
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
 import javax.swing.border.LineBorder;
+import javax.swing.event.DocumentEvent;
+import javax.swing.event.DocumentListener;
 import javax.swing.event.TreeSelectionEvent;
 import javax.swing.plaf.basic.BasicButtonUI;
 import javax.swing.text.*;
@@ -633,6 +635,7 @@ public class CommandCenter extends JFrame {
                             }
                         } else if (!cmd.trim().equalsIgnoreCase("cd")) {
                             String target = cmd.trim().substring(3).replace("\"", "");
+                            if (target.startsWith("/d ")) target = target.substring(3).trim();
                             File newDir = new File(f, target);
                             if (newDir.exists() && newDir.isDirectory()) {
                                 currentPath = newDir.getAbsolutePath();
@@ -723,7 +726,7 @@ public class CommandCenter extends JFrame {
                                     openFileEditor(f, false);
                                 } else if (selected.endsWith(".class")) {
                                     String className = selected.replace(".class", "");
-                                    runCmd("java \"" + className + "\"");
+                                    runCmd("cd /d \"" + currentPath + "\" && java \"" + className + "\"");
                                 } else {
                                     showOpenOptions(f);
                                 }
@@ -741,28 +744,31 @@ public class CommandCenter extends JFrame {
                         fileList.setSelectedIndex(row);
                         if (SwingUtilities.isRightMouseButton(e)) {
                             String selected = fileList.getSelectedValue();
-                            if (selected != null && !selected.endsWith(" [DIR]")) {
+                            if (selected != null) {
+                                boolean isDir = selected.endsWith(" [DIR]");
                                 JPopupMenu popup = new JPopupMenu();
                                 
-                                if (selected.endsWith(".java")) {
+                                if (!isDir && selected.endsWith(".java")) {
                                     JMenuItem compileItem = new JMenuItem("Compile (.java)");
                                     compileItem.addActionListener(ev -> {
-                                        runCmd("javac \"" + selected + "\"");
-                                        JOptionPane.showMessageDialog(ThisPCPanel.this, "Compile command sent to terminal.");
+                                        runCmd("cd /d \"" + currentPath + "\" && javac \"" + selected + "\"");
+                                        new javax.swing.Timer(1500, refreshEv -> refreshList()).start();
                                     });
                                     popup.add(compileItem);
                                     popup.addSeparator();
                                 }
                                 
-                                JMenuItem openNormalItem = new JMenuItem("Open (Normal)");
-                                openNormalItem.addActionListener(ev -> openFileEditor(new File(currentPath, selected), false));
-                                popup.add(openNormalItem);
-                                
-                                JMenuItem openBrailleItem = new JMenuItem("Open (Braille)");
-                                openBrailleItem.addActionListener(ev -> openFileEditor(new File(currentPath, selected), true));
-                                popup.add(openBrailleItem);
-                                
-                                popup.addSeparator();
+                                if (!isDir) {
+                                    JMenuItem openNormalItem = new JMenuItem("Open (Normal)");
+                                    openNormalItem.addActionListener(ev -> openFileEditor(new File(currentPath, selected), false));
+                                    popup.add(openNormalItem);
+                                    
+                                    JMenuItem openBrailleItem = new JMenuItem("Open (Braille)");
+                                    openBrailleItem.addActionListener(ev -> openFileEditor(new File(currentPath, selected), true));
+                                    popup.add(openBrailleItem);
+                                    
+                                    popup.addSeparator();
+                                }
                                 
                                 JMenuItem renameItem = new JMenuItem("Rename");
                                 renameItem.addActionListener(ev -> renameFile(selected));
@@ -949,7 +955,7 @@ public class CommandCenter extends JFrame {
                 dialog.setSize(w + 20, h + 60);
                 
             } else {
-                JTextArea editor = new JTextArea(content);
+                IndentTextArea editor = new IndentTextArea(content);
                 int[] fontSize = {14};
                 editor.setFont(new Font("Segoe UI Symbol", Font.PLAIN, fontSize[0]));
                 editor.setLineWrap(true);
@@ -1319,7 +1325,7 @@ public class CommandCenter extends JFrame {
     // Java Editor Panel
     // =========================================================================
     static class JavaPanel extends JPanel {
-        private final JTextArea editor = new JTextArea();
+        private final IndentTextArea editor = new IndentTextArea();
         private final JTextArea outputConsole = new JTextArea();
         private final JTree fileTree;
         private final DefaultMutableTreeNode rootNode;
@@ -1338,6 +1344,7 @@ public class CommandCenter extends JFrame {
             JPanel toolbar = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 5));
             JButton selectFolderBtn = new JButton("Select Folder");
             JButton newFileBtn = new JButton("New File");
+            JButton refreshTreeBtn = new JButton("Refresh");
             JButton toggleTreeBtn = new JButton("☰");
             toggleTreeBtn.setToolTipText("Toggle File Tree");
             JButton saveBtn = new JButton("Save");
@@ -1345,6 +1352,7 @@ public class CommandCenter extends JFrame {
             JButton saveRunBtn = new JButton("Save & Run");
             toolbar.add(selectFolderBtn);
             toolbar.add(newFileBtn);
+            toolbar.add(refreshTreeBtn);
             toolbar.add(toggleTreeBtn);
             toolbar.add(saveBtn);
             toolbar.add(runBtn);
@@ -1370,6 +1378,8 @@ public class CommandCenter extends JFrame {
             setupEditorKeyBindings(editor);
             
             JScrollPane editorScroll = new JScrollPane(editor);
+            LineNumberView lineNumberView = new LineNumberView(editor);
+            editorScroll.setRowHeaderView(lineNumberView);
 
             // Output Console Setup
             outputConsole.setFont(new Font("Consolas", Font.PLAIN, 12));
@@ -1399,6 +1409,12 @@ public class CommandCenter extends JFrame {
                 treeContainer.setVisible(isTreeVisible);
                 mainContent.revalidate();
                 mainContent.repaint();
+            });
+
+            refreshTreeBtn.addActionListener(e -> {
+                rootNode.removeAllChildren();
+                buildTree(rootNode, currentProjectDir);
+                treeModel.reload();
             });
 
             selectFolderBtn.addActionListener(e -> {
@@ -1561,54 +1577,79 @@ public class CommandCenter extends JFrame {
                 return;
             }
 
-            File srcDir = new File(currentProjectDir, "src");
-            File binDir = new File(currentProjectDir, "bin");
-
-            try {
+            File fileParent = currentFile.getParentFile();
+            File srcDir = fileParent;
+            File projectRoot = fileParent.getParentFile() != null ? fileParent.getParentFile() : fileParent;
+            
+            if (fileParent.getName().equalsIgnoreCase("src")) {
+                projectRoot = fileParent.getParentFile();
+                if (projectRoot == null) projectRoot = fileParent;
+            } else {
+                srcDir = new File(fileParent, "src");
+                projectRoot = fileParent;
                 if (!srcDir.exists()) srcDir.mkdirs();
-                if (!binDir.exists()) binDir.mkdirs();
+            }
+            
+            // Final variables to use inside the lambda
+            final File finalSrcDir = srcDir;
+            final File finalBinDir = new File(projectRoot, "bin");
+            final File finalCurrentFile = currentFile;
 
-                File sourceFile;
-                if (currentFile.getParentFile().getAbsolutePath().equals(srcDir.getAbsolutePath())) {
-                    sourceFile = currentFile;
-                } else {
-                    sourceFile = new File(srcDir, currentFile.getName());
-                }
-                
-                Files.writeString(sourceFile.toPath(), editor.getText(), StandardCharsets.UTF_8);
-                currentFile = sourceFile;
-                outputConsole.append("Saved to: " + sourceFile.getAbsolutePath() + "\n");
-                
-                // Refresh tree
-                rootNode.removeAllChildren();
-                buildTree(rootNode, currentProjectDir);
-                treeModel.reload();
+            new Thread(() -> {
+                try {
+                    if (!finalBinDir.exists()) finalBinDir.mkdirs();
 
-                if (run) {
-                    outputConsole.append("Compiling...\n");
-                    Process p = new ProcessBuilder("javac", "-d", binDir.getAbsolutePath(), sourceFile.getAbsolutePath())
-                            .redirectErrorStream(true).start();
-                    BufferedReader reader = new BufferedReader(new InputStreamReader(p.getInputStream()));
-                    String line;
-                    while ((line = reader.readLine()) != null) {
-                        outputConsole.append(line + "\n");
+                    File sourceFile;
+                    if (finalCurrentFile.getParentFile().getAbsolutePath().equals(finalSrcDir.getAbsolutePath())) {
+                        sourceFile = finalCurrentFile;
+                    } else {
+                        sourceFile = new File(finalSrcDir, finalCurrentFile.getName());
                     }
-                    p.waitFor();
+                    
+                    Files.writeString(sourceFile.toPath(), editor.getText(), StandardCharsets.UTF_8);
+                    currentFile = sourceFile;
+                    outputConsole.append("Saved to: " + sourceFile.getAbsolutePath() + "\n");
+                    
+                    // Refresh tree
+                    SwingUtilities.invokeLater(() -> {
+                        rootNode.removeAllChildren();
+                        buildTree(rootNode, currentProjectDir);
+                        treeModel.reload();
+                    });
 
-                    if (p.exitValue() == 0) {
-                        outputConsole.append("Running...\n");
-                        Process runP = new ProcessBuilder("java", "-cp", binDir.getAbsolutePath(), className)
+                    if (run) {
+                        outputConsole.append("Compiling...\n");
+                        Process p = new ProcessBuilder("javac", "-d", finalBinDir.getAbsolutePath(), sourceFile.getAbsolutePath())
                                 .redirectErrorStream(true).start();
-                        BufferedReader runReader = new BufferedReader(new InputStreamReader(runP.getInputStream()));
-                        while ((line = runReader.readLine()) != null) {
+                        BufferedReader reader = new BufferedReader(new InputStreamReader(p.getInputStream()));
+                        String line;
+                        while ((line = reader.readLine()) != null) {
                             outputConsole.append(line + "\n");
                         }
-                        runP.waitFor();
+                        p.waitFor();
+
+                        // Refresh tree AGAIN after compiling to show .class files
+                        SwingUtilities.invokeLater(() -> {
+                            rootNode.removeAllChildren();
+                            buildTree(rootNode, currentProjectDir);
+                            treeModel.reload();
+                        });
+
+                        if (p.exitValue() == 0) {
+                            outputConsole.append("Running...\n");
+                            Process runP = new ProcessBuilder("java", "-cp", finalBinDir.getAbsolutePath(), className)
+                                    .redirectErrorStream(true).start();
+                            BufferedReader runReader = new BufferedReader(new InputStreamReader(runP.getInputStream()));
+                            while ((line = runReader.readLine()) != null) {
+                                outputConsole.append(line + "\n");
+                            }
+                            runP.waitFor();
+                        }
                     }
+                } catch (Exception ex) {
+                    outputConsole.append("Error: " + ex.getMessage() + "\n");
                 }
-            } catch (Exception ex) {
-                outputConsole.append("Error: " + ex.getMessage() + "\n");
-            }
+            }).start();
         }
 
         public void updateTheme(Color bg, Color fg) {
@@ -1626,7 +1667,7 @@ public class CommandCenter extends JFrame {
     // HTML Editor Panel
     // =========================================================================
     static class HtmlPanel extends JPanel {
-        private final JTextArea editor = new JTextArea();
+        private final IndentTextArea editor = new IndentTextArea();
         private File currentHtmlFile = null;
 
         public HtmlPanel() {
@@ -1646,6 +1687,8 @@ public class CommandCenter extends JFrame {
             editor.setText("<!DOCTYPE html>\n<html>\n<head>\n    <title>New Page</title>\n</head>\n<body>\n    <h1>Hello World</h1>\n</body>\n</html>");
             
             JScrollPane scroll = new JScrollPane(editor);
+            LineNumberView lineNumberView = new LineNumberView(editor);
+            scroll.setRowHeaderView(lineNumberView);
 
             add(toolbar, BorderLayout.NORTH);
             add(scroll, BorderLayout.CENTER);
@@ -1701,6 +1744,101 @@ public class CommandCenter extends JFrame {
     }
     
     // =========================================================================
+    // Custom Components for IDE Features
+    // =========================================================================
+    
+    // 1. Line Number Row Header
+    static class LineNumberView extends JComponent {
+        private final JTextArea textArea;
+        private final Font font = new Font("Consolas", Font.PLAIN, 12);
+        private final Color lineColor = new Color(150, 150, 150);
+
+        public LineNumberView(JTextArea textArea) {
+            this.textArea = textArea;
+            setFont(font);
+            setBackground(textArea.getBackground());
+            setForeground(lineColor);
+            
+            textArea.getDocument().addDocumentListener(new DocumentListener() {
+                @Override public void insertUpdate(DocumentEvent e) { repaint(); }
+                @Override public void removeUpdate(DocumentEvent e) { repaint(); }
+                @Override public void changedUpdate(DocumentEvent e) { repaint(); }
+            });
+            textArea.addPropertyChangeListener("font", evt -> {
+                setFont(textArea.getFont());
+                revalidate();
+                repaint();
+            });
+        }
+
+        @Override
+        public Dimension getPreferredSize() {
+            int lineCount = textArea.getLineCount();
+            int width = getFontMetrics(getFont()).stringWidth(String.valueOf(lineCount)) + 20;
+            return new Dimension(width, textArea.getHeight());
+        }
+
+        @Override
+        protected void paintComponent(Graphics g) {
+            super.paintComponent(g);
+            g.setFont(getFont());
+            g.setColor(getForeground());
+            
+            FontMetrics fm = g.getFontMetrics();
+            int lineHeight = textArea.getFontMetrics(textArea.getFont()).getHeight();
+            
+            int start = textArea.viewToModel2D(new Point(0, 0));
+            int end = textArea.viewToModel2D(new Point(0, textArea.getHeight()));
+            
+            try {
+                int startLine = textArea.getLineOfOffset(start);
+                int endLine = textArea.getLineOfOffset(end);
+                
+                for (int line = startLine; line <= endLine && line < textArea.getLineCount(); line++) {
+                    int y = textArea.modelToView2D(textArea.getLineStartOffset(line)).getBounds().y;
+                    String lineNum = String.valueOf(line + 1);
+                    int x = getWidth() - fm.stringWidth(lineNum) - 8;
+                    g.drawString(lineNum, x, y + fm.getAscent());
+                }
+            } catch (BadLocationException ignored) {}
+        }
+    }
+
+    // 2. Indent Text Area (Draws guiding lines)
+    static class IndentTextArea extends JTextArea {
+        public IndentTextArea() { super(); }
+        public IndentTextArea(String text) { super(text); }
+
+        @Override
+        protected void paintComponent(Graphics g) {
+            super.paintComponent(g);
+            
+            Graphics2D g2 = (Graphics2D) g;
+            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+            
+            FontMetrics fm = g2.getFontMetrics(getFont());
+            int charWidth = fm.charWidth(' ');
+            int tabSize = getTabSize();
+            int indentWidth = charWidth * tabSize;
+            
+            int height = getHeight();
+            Color guideColor = getForeground().equals(Color.WHITE) ? new Color(255, 255, 255, 30) : new Color(0, 0, 0, 30);
+            g2.setColor(guideColor);
+            
+            float[] dash = {2f, 4f};
+            g2.setStroke(new BasicStroke(1f, BasicStroke.CAP_BUTT, BasicStroke.JOIN_ROUND, 1f, dash, 0f));
+            
+            // Calculate max columns to draw (rough estimate based on width)
+            int maxCols = getWidth() / indentWidth;
+            
+            for (int i = 1; i <= maxCols; i++) {
+                int x = i * indentWidth - 2; // slight offset
+                g2.drawLine(x, 0, x, height);
+            }
+        }
+    }
+    
+    // =========================================================================
     // Custom Braille Grid Panel
     // =========================================================================
     static class BrailleGridPanel extends JPanel {
@@ -1710,7 +1848,7 @@ public class CommandCenter extends JFrame {
         private final Font fallback;
 
         public BrailleGridPanel(String originalText) {
-            this.text = originalText.replaceAll("\\$[1-9]", " "); 
+            this.text = originalText; 
             
             this.consolas = new Font("Consolas", Font.PLAIN, fontSize);
             this.fallback = new Font("Segoe UI Symbol", Font.PLAIN, fontSize);
@@ -1740,6 +1878,21 @@ public class CommandCenter extends JFrame {
             else fontSize = Math.max(fontSize - 2, 8);
             revalidate();
             repaint();
+        }
+        
+        private Color getColor(int code) {
+            return switch (code) {
+                case 1 -> new Color(255, 216, 218); // Light Pink
+                case 2 -> new Color(255, 196, 203); // Pink
+                case 3 -> new Color(240, 174, 252); // Light Purple
+                case 4 -> new Color(255, 185, 140); // Light Orange
+                case 5 -> new Color(255, 229, 167); // Light Yellow
+                case 6 -> new Color(155, 230, 153); // Light Green
+                case 7 -> new Color(124, 224, 196); // Light Mint
+                case 8 -> new Color(123, 211, 240); // Light Cyan
+                case 9 -> new Color(102, 189, 245); // Light Blue
+                default -> new Color(30, 30, 30); // None (Dark Gray)
+            };
         }
 
         @Override
@@ -1773,8 +1926,19 @@ public class CommandCenter extends JFrame {
             String[] lines = text.split("\n");
             for (String line : lines) {
                 int x = 10;
-                for (char c : line.toCharArray()) {
+                Color currentColor = getColor(0);
+                
+                for (int i = 0; i < line.length(); i++) {
+                    char c = line.charAt(i);
                     if (c == '\r') continue;
+                    
+                    // Check for color code $1 to $9. Acts as zero-width control tag.
+                    if (c == '$' && i + 1 < line.length() && Character.isDigit(line.charAt(i+1))) {
+                        int code = line.charAt(i+1) - '0';
+                        currentColor = getColor(code);
+                        i++; // Skip the number
+                        continue; // Do NOT advance x. The tag takes up 0 visual space.
+                    }
                     
                     if (c >= '\u2800' && c <= '\u28FF' && !cFont.canDisplay(c)) {
                         g2.setFont(fFont);
@@ -1782,6 +1946,7 @@ public class CommandCenter extends JFrame {
                         g2.setFont(cFont);
                     }
                     
+                    g2.setColor(currentColor);
                     g2.drawString(String.valueOf(c), x, y + ascent);
                     x += charW;
                 }
