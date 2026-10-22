@@ -31,94 +31,71 @@ A feature-rich, multi-tabbed Java Swing application that acts as a powerful wrap
    javac CommandCenter.java
 Run the application:
 
-bash
+```bash
 java CommandCenter
-(Optional) To run with Administrator privileges for full system access:
-Right-click your terminal -> Select "Run as Administrator" -> Run the java command.
 
-⌨️ Keyboard Shortcuts
-Shortcut	Action
-Ctrl + + / Ctrl + -	Zoom in / Zoom out (Terminal, Editors, File Explorer)
-Ctrl + Alt + J	Open the hidden Java IDE tab
-Ctrl + Alt + H	Open the hidden HTML Editor tab
-Ctrl + Mouse Wheel	Fast zoom in/out on text editors and terminals
-🎨 Theme Color Guide
-Type these codes into the Theme Code box at the bottom left and click Apply.
-(First digit = Background Color | Second digit = Text Color)
+## ⌨️ Keyboard Shortcuts
 
-0: Black
+| Shortcut | Action |
+| :--- | :--- |
+| `Ctrl` + `+` / `Ctrl` + `-` | Zoom in / Zoom out (Terminal, Editors, File Explorer) |
+| `Ctrl` + `Alt` + `J` | Open the hidden Java IDE tab |
+| `Ctrl` + `Alt` + `H` | Open the hidden HTML Editor tab |
+| `Ctrl` + `Mouse Wheel` | Fast zoom in/out on text editors and terminals |
 
-1: White
+## 🎨 Theme Color Guide
 
-2: Green
+Type these codes into the **Theme Code** box at the bottom left and click **Apply**.
+*(First digit = Background Color | Second digit = Text Color)*
 
-3: Blue
+*   `0`: Black
+*   `1`: White
+*   `2`: Green
+*   `3`: Blue
+*   `4`: Red
+*   `5`: Yellow
+*   `6`: Cyan
+*   `7`: Magenta
+*   `8`: Dark Gray
+*   `9`: Light Gray
 
-4: Red
+**Examples:**
+*   `01` (Black BG, White Text)
+*   `02` (Black BG, Green Text - Default)
+*   `18` (White BG, Dark Gray Text)
+  
+## 📂 Tab Breakdown
 
-5: Yellow
+### 1. CMD
+*   Fully interactive. Click directly into the terminal to type commands.
+*   Type `cls` to clear the screen.
+*   Use the floating `CLS` button on the bottom right of standard terminals.
 
-6: Cyan
+### 2. ThisPC
+*   Visual file navigation.
+*   **Double-click** a folder to enter it; **Double-click** a file to edit.
+*   **Right-click** files to Compile (`.java`), Open (Normal/Braille mode), Rename, or Delete.
+*   Use the top bar to create new folders and files.
 
-7: Magenta
+### 3. NetworkChuck
+*   **Left-Click**: Opens a prompt for required input (like URLs, IPs, or file paths) and runs the command.
+*   **Right-Click**: Runs the pre-configured example command immediately.
+*   Includes a dynamic Wi-Fi password extractor and various `curl` utilities.
 
-8: Dark Gray
+### 4. Java (Press `Ctrl + Alt + J`)
+*   Automatically manages `src` and `bin` folders based on your current project directory.
+*   Collapsible project file tree (toggle via `☰`).
+*   **Save & Run** compiles your code and launches it in the built-in terminal.
+*   The terminal unlocks for input when your Java program asks for user input (e.g., `Scanner`).
 
-9: Light Gray
+### 5. HTML (Press `Ctrl + Alt + H`)
+*   Quick generation of `index.html`, `style.css`, and `script.js`.
+*   Automatically injects `<link>` and `<script>` tags into your HTML file.
+*   Click **Preview** to open the current HTML file in your default web browser.
 
-Examples:
+## 🧠 Technical Highlights
 
-01 (Black BG, White Text)
-
-02 (Black BG, Green Text - Default)
-
-18 (White BG, Dark Gray Text)
-
-📂 Tab Breakdown
-1. CMD
-Fully interactive. Click directly into the terminal to type commands.
-
-Type cls to clear the screen.
-
-Use the floating CLS button on the bottom right of standard terminals.
-
-2. ThisPC
-Visual file navigation.
-
-Double-click a folder to enter it; Double-click a file to edit.
-
-Right-click files to Compile (.java), Open (Normal/Braille mode), Rename, or Delete.
-
-Use the top bar to create new folders and files.
-
-3. NetworkChuck
-Left-Click: Opens a prompt for required input (like URLs, IPs, or file paths) and runs the command.
-
-Right-Click: Runs the pre-configured example command immediately.
-
-Includes a dynamic Wi-Fi password extractor and various curl utilities.
-
-4. Java (Press Ctrl + Alt + J)
-Automatically manages src and bin folders based on your current project directory.
-
-Collapsible project file tree (toggle via ☰).
-
-Save & Run compiles your code and launches it in the built-in terminal.
-
-The terminal unlocks for input when your Java program asks for user input (e.g., Scanner).
-
-5. HTML (Press Ctrl + Alt + H)
-Quick generation of index.html, style.css, and script.js.
-
-Automatically injects <link> and <script> tags into your HTML file.
-
-Click Preview to open the current HTML file in your default web browser.
-
-🧠 Technical Highlights
-ANSI Stripping: The command prompt wrapper intercepts stdout/stderr and strips ANSI escape codes (\u001B[...m) to prevent terminal garbage text.
-
-Custom Rendering: Braille art is rendered using a custom JPanel and Graphics2D rather than a JTextArea. This ensures perfectly monospaced grid alignment for complex ASCII art.
-
-ANSI Inline Colors: The Braille viewer parses $1 to $9 tags and dynamically changes the Graphics2D color context without disrupting the character grid.
-
-Thread Isolation: File compilation, process execution, and terminal input streams are handled on background threads to prevent the Swing UI from freezing.
+*   **ANSI Stripping**: The command prompt wrapper intercepts stdout/stderr and strips ANSI escape codes (`\u001B[...m`) to prevent terminal garbage text.
+*   **Custom Rendering**: Braille art is rendered using a custom `JPanel` and `Graphics2D` rather than a `JTextArea`. This ensures perfectly monospaced grid alignment for complex ASCII art.
+*   **ANSI Inline Colors**: The Braille viewer parses `$1` to `$9` tags and dynamically changes the `Graphics2D` color context without disrupting the character grid.
+*   **Thread Isolation**: File compilation, process execution, and terminal input streams are handled on background threads to prevent the Swing UI from freezing.
